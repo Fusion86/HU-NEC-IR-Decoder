@@ -1,0 +1,20 @@
+#############################################################################
+#
+# makefile.shared common settings and link to bmptk/makefile.inc
+#
+# (c) Wouter van Ooijen (www.voti.nl) 2017
+#
+# This file is in the public domain.
+#
+#############################################################################
+
+# the location of the ti software directory
+RELATIVE          ?= .
+TI-SOFTWARE       := $(HOME)/Sources
+
+# add Catch
+SEARCH            += $(TI-SOFTWARE)/Catch/include
+
+# add hwlib
+HWLIB             ?= $(TI-SOFTWARE)/hwlib
+include           $(HWLIB)/Makefile.inc

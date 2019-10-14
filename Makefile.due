@@ -1,0 +1,32 @@
+#############################################################################
+#
+# Makefile.due common settings for Arduino Due projects
+#
+# (c) Wouter van Ooijen (www.voti.nl) 2017
+#
+# This file is in the public domain.
+#
+#############################################################################
+
+UNAME_S := $(shell uname -s)
+
+# Settings for Arduino Due projects
+TARGET            ?= arduino_due
+CONSOLE_BAUDRATE  ?= 2400
+STACK_SIZE        ?= 81920
+HEAP              ?= BMPTK
+
+ifeq ($(UNAME_S),Linux)
+    SERIAL_PORT       ?= $(shell ls /dev/ttyACM*)
+endif
+
+ifeq ($(UNAME_S),Darwin)
+    SERIAL_PORT       ?= $(shell ls /dev/cu.usb*)
+endif
+
+# Add the rtos
+RTOS              ?= $(HOME)/Sources/rtos
+include           $(RTOS)/makefile.inc
+
+# Defer to the Makefile.link
+include           $(RELATIVE)/Makefile.link
