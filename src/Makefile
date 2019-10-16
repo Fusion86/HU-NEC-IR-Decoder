@@ -12,7 +12,7 @@
 SOURCES :=
 
 # header files in this project
-HEADERS := version.h
+HEADERS := tasks.hpp version.h
 
 # other places to look for files for this project
 SEARCH  :=

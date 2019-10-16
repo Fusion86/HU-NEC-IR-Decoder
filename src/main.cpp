@@ -9,8 +9,8 @@ int main() {
 
     hwlib::cout << "SparkySparky v" << SPARKYSPARKY_VERSION << "\n";
 
-    auto t1 = pause_detector();
-    auto t2 = msg_decoder();
-    auto t3 = msg_logger();
+    auto logger = msg_logger();
+    auto decoder = msg_decoder(logger);
+    auto detector = pause_detector(decoder);
     rtos::run();
 }
