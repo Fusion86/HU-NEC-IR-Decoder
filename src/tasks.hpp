@@ -16,9 +16,14 @@ struct ir_msg {
 // States
 //
 
-enum pause_detector_state {
+enum class pause_detector_state {
     idle,
     signal,
+};
+
+enum class msg_decoder_state {
+    idle,
+    message_in_progress,
 };
 
 //
@@ -60,20 +65,45 @@ class msg_logger : public rtos::task<>, public msg_listener {
 class msg_decoder : public rtos::task<>, public pause_listener {
   private:
     msg_listener& listener;
+    msg_decoder_state state;
+    rtos::channel<int, 100> pauses;
 
   public:
     msg_decoder(msg_listener& listener)
-        : task("msg_decoder"), listener(listener) {}
+        : task("msg_decoder"), listener(listener), pauses(this, "pauses") {}
 
     void main() override {
-        hwlib::cout << "hello from msg_decoder";
+        int p, m, n;
         for (;;) {
-            hwlib::wait_ms(1000);
+            switch (state) {
+                case msg_decoder_state::idle:
+                    p = pauses.read();
+                    if (p > 4'000 && p < 5'000) {
+                        n = m = 0;
+                        state = msg_decoder_state::message_in_progress;
+                    }
+                    break;
+                case msg_decoder_state::message_in_progress:
+                    p = pauses.read();
+                    if (p > 200 && p < 2'000) {
+                        n++;
+                        m = m << 1;
+                        m |= (p > 1'000) ? 1 : 0;
+
+                        if (n == 0) {
+                            // check();
+                            state = msg_decoder_state::idle;
+                        }
+                    } else {
+                        state = msg_decoder_state::idle;
+                    }
+                    break;
+            }
         }
     }
 
     void pause_detected(int length) override {
-        hwlib::cout << "pause: " << length << "us\n";
+        pauses.write(length);
     }
 };
 
@@ -88,6 +118,7 @@ class pause_detector : public rtos::task<> {
         : task("pause_detector"), signal(hwlib::target::pins::d8), listener(listener) {}
 
     void main() override {
+        // TODO: hwlib::wait_us() is inaccurate for creating a clock-based loop
         int length = 0;
         for (;;) {
             switch (state) {
