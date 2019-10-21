@@ -94,6 +94,9 @@ class msg_decoder : public rtos::task<>, public pause_listener {
                         state = msg_decoder_state::idle;
                         if (check(data)) {
                             listener.msg_received(data_to_msg(data));
+                        } else {
+                            hwlib::cout << "invalid msg\n";
+                            print_bits(data);
                         }
                     } else {
                         num_bits++;
@@ -113,7 +116,7 @@ class msg_decoder : public rtos::task<>, public pause_listener {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-compare"
         uint8_t* ptr = (uint8_t*)&data;
-        return (ptr[0] & ptr[1]) == 0 && (ptr[2] & ptr[3]) == 0;
+        return ptr[0] == (~ptr[1] & 0xFF) && ptr[2] == (~ptr[3] & 0xFF);
 #pragma GCC diagnostic pop
     }
 
