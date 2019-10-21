@@ -52,18 +52,21 @@ class pause_listener {
 
 class msg_logger : public rtos::task<>, public msg_listener {
   private:
+    rtos::channel<ir_msg, 10> messages;
+
   public:
     msg_logger()
-        : task("msg_logger") {}
+        : task("msg_logger"), messages(this, "messages") {}
 
     void main() override {
         for (;;) {
-            hwlib::wait_ms(1000);
+            auto msg = messages.read();
+            hwlib::cout << "address: " << msg.address << "\ncommand: " << msg.command << "\n\n";
         }
     }
 
     void msg_received(ir_msg msg) override {
-        hwlib::cout << "address: " << msg.address << "\ncommand: " << msg.command << "\n\n";
+        messages.write(msg);
     }
 };
 
@@ -95,8 +98,11 @@ class msg_decoder : public rtos::task<>, public pause_listener {
                         if (check(data)) {
                             listener.msg_received(data_to_msg(data));
                         } else {
+#ifdef DEBUG
                             hwlib::cout << "invalid msg\n";
                             print_bits(data);
+                            hwlib::cout << "\n";
+#endif
                         }
                     } else {
                         num_bits++;
@@ -116,6 +122,7 @@ class msg_decoder : public rtos::task<>, public pause_listener {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-compare"
         uint8_t* ptr = (uint8_t*)&data;
+        // Check byte0 == ~byte1 && byte2 == ~byte3
         return ptr[0] == (~ptr[1] & 0xFF) && ptr[2] == (~ptr[3] & 0xFF);
 #pragma GCC diagnostic pop
     }
@@ -136,8 +143,8 @@ class pause_detector : public rtos::task<> {
     pause_detector_state state = pause_detector_state::idle;
 
   public:
-    pause_detector(pause_listener& listener)
-        : task("pause_detector"), signal(hwlib::target::pins::d8), listener(listener), clock(this, 100, "clock") {}
+    pause_detector(pause_listener& listener, hwlib::target::pin_in pin)
+        : task("pause_detector"), signal(pin), listener(listener), clock(this, 100, "clock") {}
 
     void main() override {
         int n = 0;

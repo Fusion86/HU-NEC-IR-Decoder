@@ -11,6 +11,6 @@ int main() {
 
     auto logger = msg_logger();
     auto decoder = msg_decoder(logger);
-    auto detector = pause_detector(decoder);
+    auto detector = pause_detector(decoder, hwlib::target::pins::d8);
     rtos::run();
 }
