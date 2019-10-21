@@ -2,14 +2,18 @@
 
 #include <rtos.hpp>
 
+#include "util.hpp"
+
+#define HIGH 1
+#define LOW 0
+
 //
 // Structs
 //
 
 struct ir_msg {
-    int address;
-    int command;
-    bool repeat = false;
+    uint8_t address;
+    uint8_t command;
 };
 
 //
@@ -17,7 +21,9 @@ struct ir_msg {
 //
 
 enum class pause_detector_state {
+    // Waiting for signal (when input is high)
     idle,
+    // Receiving signal (when input low)
     signal,
 };
 
@@ -51,21 +57,20 @@ class msg_logger : public rtos::task<>, public msg_listener {
         : task("msg_logger") {}
 
     void main() override {
-        hwlib::cout << "hello from msg_logger";
         for (;;) {
             hwlib::wait_ms(1000);
         }
     }
 
     void msg_received(ir_msg msg) override {
-        hwlib::cout << "sparkysparky\n";
+        hwlib::cout << "address: " << msg.address << "\ncommand: " << msg.command << "\n\n";
     }
 };
 
 class msg_decoder : public rtos::task<>, public pause_listener {
   private:
     msg_listener& listener;
-    msg_decoder_state state;
+    msg_decoder_state state = msg_decoder_state::idle;
     rtos::channel<int, 100> pauses;
 
   public:
@@ -73,29 +78,27 @@ class msg_decoder : public rtos::task<>, public pause_listener {
         : task("msg_decoder"), listener(listener), pauses(this, "pauses") {}
 
     void main() override {
-        int p, m, n;
+        int pause, num_bits, data = 0;
         for (;;) {
+            pause = pauses.read();
             switch (state) {
                 case msg_decoder_state::idle:
-                    p = pauses.read();
-                    if (p > 4'000 && p < 5'000) {
-                        n = m = 0;
+                    if (pause > 4'000 && pause < 5'000) {
+                        // When pause after start signal
+                        num_bits = data = 0;
                         state = msg_decoder_state::message_in_progress;
                     }
                     break;
                 case msg_decoder_state::message_in_progress:
-                    p = pauses.read();
-                    if (p > 200 && p < 2'000) {
-                        n++;
-                        m = m << 1;
-                        m |= (p > 1'000) ? 1 : 0;
-
-                        if (n == 0) {
-                            // check();
-                            state = msg_decoder_state::idle;
+                    if (num_bits == 32) {
+                        state = msg_decoder_state::idle;
+                        if (check(data)) {
+                            listener.msg_received(data_to_msg(data));
                         }
                     } else {
-                        state = msg_decoder_state::idle;
+                        num_bits++;
+                        data <<= 1;
+                        data |= pause > 1'000 ? 1 : 0;
                     }
                     break;
             }
@@ -105,38 +108,53 @@ class msg_decoder : public rtos::task<>, public pause_listener {
     void pause_detected(int length) override {
         pauses.write(length);
     }
+
+    bool check(int data) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
+        uint8_t* ptr = (uint8_t*)&data;
+        return (ptr[0] & ptr[1]) == 0 && (ptr[2] & ptr[3]) == 0;
+#pragma GCC diagnostic pop
+    }
+
+    ir_msg data_to_msg(int data) {
+        ir_msg msg;
+        msg.address = data >> 24;
+        msg.command = data >> 8 & 0xFF;
+        return msg;
+    }
 };
 
 class pause_detector : public rtos::task<> {
   private:
     hwlib::target::pin_in signal;
     pause_listener& listener;
+    rtos::clock clock;
     pause_detector_state state = pause_detector_state::idle;
 
   public:
     pause_detector(pause_listener& listener)
-        : task("pause_detector"), signal(hwlib::target::pins::d8), listener(listener) {}
+        : task("pause_detector"), signal(hwlib::target::pins::d8), listener(listener), clock(this, 100, "clock") {}
 
     void main() override {
-        // TODO: hwlib::wait_us() is inaccurate for creating a clock-based loop
-        int length = 0;
+        int n = 0;
         for (;;) {
+            wait(clock);
             switch (state) {
                 case pause_detector_state::idle:
-                    hwlib::wait_us(100);
-                    signal.refresh();
-                    if (signal.read()) {
-                        listener.pause_detected(length);
+                    if (signal.read() == LOW) {
+                        // When receiving an IR signal
+                        listener.pause_detected(n);
                         state = pause_detector_state::signal;
                     } else {
-                        length += 100;
+                        // When NOT receiving an IR signal
+                        n += 100;
                     }
                     break;
                 case pause_detector_state::signal:
-                    hwlib::wait_us(100);
-                    signal.refresh();
-                    if (!signal.read()) {
-                        length = 0;
+                    if (signal.read() == HIGH) {
+                        // When NOT receiving an IR signal
+                        n = 0;
                         state = pause_detector_state::idle;
                     }
                     break;

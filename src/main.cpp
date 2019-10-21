@@ -5,7 +5,7 @@
 
 int main() {
     // Wait for the PC console to start
-    hwlib::wait_ms(2000);
+    hwlib::wait_ms(1000);
 
     hwlib::cout << "SparkySparky v" << SPARKYSPARKY_VERSION << "\n";
 
